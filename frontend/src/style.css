@@ -16,7 +16,6 @@ body{
 
 .left-panel{
     flex:1;
-    position:relative;
 
     background:linear-gradient(
         180deg,
@@ -47,8 +46,8 @@ body{
 }
 
 .nav-links a{
-    color:white;
     text-decoration:none;
+    color:white;
     font-weight:600;
 }
 
@@ -69,8 +68,8 @@ body{
 
 .welcome-text p{
     font-size:22px;
-    margin-bottom:30px;
     line-height:1.6;
+    margin-bottom:30px;
 }
 
 .welcome-text ul{
@@ -158,6 +157,13 @@ body{
 
 .login-card button:hover{
     background:#2890D0;
+}
+
+#login-message{
+    margin-top:15px;
+    text-align:center;
+    font-weight:600;
+    color:#10B981;
 }
 
 .login-card a{

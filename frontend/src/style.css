@@ -177,7 +177,7 @@ body {
 }
 
 /* =========================================================================
-   📊 DASHBOARD EXTENSIONS (Added to support your new dashboard.html)
+   📊 DASHBOARD EXTENSIONS (Added to support the new dashboard.html)
    ========================================================================= */
 
 /* Custom formatting container for Harvey's placeholder feature actions */
@@ -201,8 +201,9 @@ body {
     gap: 12px;
 }
 
-/* Styling the buttons on the left panel workspace cleanly */
-.placeholder-actions button {
+/* Styling the buttons AND link anchors on the left panel workspace cleanly */
+.placeholder-actions button,
+.dashboard-link-btn {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -216,14 +217,18 @@ body {
     font-weight: 600;
     transition: all 0.2s ease;
     text-align: left;
+    text-decoration: none; /* Prevents anchor tags from underlining text */
 }
 
-.placeholder-actions button:hover {
+.placeholder-actions button:hover,
+.dashboard-link-btn:hover {
     background: rgba(255, 255, 255, 0.25);
     transform: translateY(-2px);
+    color: white; /* Ensures text stays white during interaction hover states */
 }
 
-.placeholder-actions button i {
+.placeholder-actions button i,
+.dashboard-link-btn i {
     font-size: 1.2rem;
 }
 

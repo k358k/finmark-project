@@ -130,3 +130,44 @@ if (orderForm) {
         // ===== END MEMBER 4 ORDERS CODE =====
     });
 }
+
+// =========================================================================
+// 📊 SECTION 3: ANALYTICS PROCESSING ENGINE (REPORTS INTERFACE)
+// =========================================================================
+const runAnalyticsBtn = document.getElementById('run-analytics-btn');
+
+if (runAnalyticsBtn) {
+    runAnalyticsBtn.addEventListener('click', function () {
+        const errorBanner = document.getElementById('analytics-error-banner');
+        
+        if (errorBanner) {
+            errorBanner.style.display = 'none';
+            errorBanner.textContent = '';
+        }
+
+        fetch('http://localhost:3001/api/reports/summary')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Data Pipeline Interrupted (HTTP Status ${response.status}). Calculations aborted.`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                const revenueUI = document.getElementById('ui-total-revenue');
+                const volumeUI = document.getElementById('ui-total-volume');
+
+                if (revenueUI) {
+                    revenueUI.innerText = `$${data.metrics.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                }
+                if (volumeUI) {
+                    volumeUI.innerText = `${data.metrics.totalItemsSold.toLocaleString()} units`;
+                }
+            })
+            .catch(error => {
+                if (errorBanner) {
+                    errorBanner.textContent = `⚠️ System Exception: ${error.message}`;
+                    errorBanner.style.display = 'block';
+                }
+            });
+    });
+}

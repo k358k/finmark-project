@@ -1,20 +1,20 @@
 {
   "name": "backend",
-  "version": "1.0.0",
-  "main": "index.js",
+  "version": "2.0.0",
+  "description": "FinMark microservices backend",
   "scripts": {
-    "test": "jest --verbose"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "cors": "^2.8.6",
-    "express": "^5.2.1"
+    "start:auth": "node auth-service/server.js",
+    "start:orders": "node orders-service/server.js",
+    "start:products": "node products-service/server.js",
+    "start:reports": "node reports-service/server.js",
+    "start:all": "concurrently \"npm run start:auth\" \"npm run start:orders\" \"npm run start:products\" \"npm run start:reports\"",
+    "test:auth": "npm test --prefix auth-service",
+    "test:orders": "npm test --prefix orders-service",
+    "test:products": "npm test --prefix products-service",
+    "test:reports": "npm test --prefix reports-service",
+    "test:all": "npm run test:auth && npm run test:orders && npm run test:products && npm run test:reports"
   },
   "devDependencies": {
-    "jest": "^30.4.2",
-    "supertest": "^7.2.2"
+    "concurrently": "^9.1.2"
   }
 }

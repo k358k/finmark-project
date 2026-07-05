@@ -1,6 +1,6 @@
 const request = require('supertest')
 const express = require('express')
-const reportsRouter = require('../routes/reports')
+const reportsRouter = require('../routes')
 
 const app = express()
 app.use('/api/reports', reportsRouter)

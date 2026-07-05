@@ -1,6 +1,6 @@
 const request = require('supertest')
 const express = require('express')
-const authRouter = require('../routes/auth')
+const authRouter = require('../routes')
 
 // set up a mini express app just for testing
 // this way we don't need to start the actual server

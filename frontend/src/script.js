@@ -96,7 +96,7 @@ if (orderForm) {
 
         // ===== MEMBER 4: ORDERS FETCH REQUEST =====
         try {
-            const response = await fetch("http://localhost:3001/api/orders", {
+            const response = await fetch("http://localhost:3002/api/orders", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -145,7 +145,7 @@ if (runAnalyticsBtn) {
             errorBanner.textContent = '';
         }
 
-        fetch('http://localhost:3001/api/reports/summary')
+        fetch('http://localhost:3004/api/reports/summary')
             .then(response => {
                 if (!response.ok) {
                     throw new Error(`Data Pipeline Interrupted (HTTP Status ${response.status}). Calculations aborted.`);

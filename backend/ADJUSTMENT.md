@@ -1,4 +1,4 @@
-# ADJUSTMENT.md — Microservices Restructuring
+# ADJUSTMENT.md - Microservices Restructuring
 
 ## What happened
 

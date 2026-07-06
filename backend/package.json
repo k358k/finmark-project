@@ -3,14 +3,14 @@
   "version": "2.0.0",
   "description": "FinMark microservices backend",
   "scripts": {
-    "start:auth": "PORT=3001 node auth-service/server.js",
-    "start:auth:standby": "PORT=3011 node auth-service/server.js",
-    "start:orders": "PORT=3002 node orders-service/server.js",
-    "start:orders:standby": "PORT=3012 node orders-service/server.js",
-    "start:products": "PORT=3003 node products-service/server.js",
-    "start:products:standby": "PORT=3013 node products-service/server.js",
-    "start:reports": "PORT=3004 node reports-service/server.js",
-    "start:reports:standby": "PORT=3014 node reports-service/server.js",
+    "start:auth": "cross-env PORT=3001 node auth-service/server.js",
+    "start:auth:standby": "cross-env PORT=3011 node auth-service/server.js",
+    "start:orders": "cross-env PORT=3002 node orders-service/server.js",
+    "start:orders:standby": "cross-env PORT=3012 node orders-service/server.js",
+    "start:products": "cross-env PORT=3003 node products-service/server.js",
+    "start:products:standby": "cross-env PORT=3013 node products-service/server.js",
+    "start:reports": "cross-env PORT=3004 node reports-service/server.js",
+    "start:reports:standby": "cross-env PORT=3014 node reports-service/server.js",
     "start:all": "concurrently \"npm run start:auth\" \"npm run start:auth:standby\" \"npm run start:orders\" \"npm run start:orders:standby\" \"npm run start:products\" \"npm run start:products:standby\" \"npm run start:reports\" \"npm run start:reports:standby\"",
     "test:auth": "npm test --prefix auth-service",
     "test:orders": "npm test --prefix orders-service",
@@ -19,6 +19,11 @@
     "test:all": "npm run test:auth && npm run test:orders && npm run test:products && npm run test:reports"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "cross-env": "^10.1.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
   }
 }

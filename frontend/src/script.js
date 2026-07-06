@@ -137,37 +137,69 @@ if (orderForm) {
 const runAnalyticsBtn = document.getElementById('run-analytics-btn');
 
 if (runAnalyticsBtn) {
-    runAnalyticsBtn.addEventListener('click', function () {
+    runAnalyticsBtn.addEventListener('click', async function () {
         const errorBanner = document.getElementById('analytics-error-banner');
+        const revenueUI = document.getElementById('ui-total-revenue');
+        const volumeUI = document.getElementById('ui-total-volume');
         
         if (errorBanner) {
             errorBanner.style.display = 'none';
             errorBanner.textContent = '';
         }
 
-        fetch('http://localhost:3004/api/reports/summary')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Data Pipeline Interrupted (HTTP Status ${response.status}). Calculations aborted.`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                const revenueUI = document.getElementById('ui-total-revenue');
-                const volumeUI = document.getElementById('ui-total-volume');
+        const ACTIVE_URL = 'http://localhost:3004/api/reports/summary';
+        const STANDBY_URL = 'http://localhost:3014/api/reports/summary';
 
+        // --- ATTEMPT 1: Primary Active Endpoint (Port 3004) ---
+        try {
+            console.log("Routing data request to Primary Node [Port 3004]...");
+            const response = await fetch(ACTIVE_URL);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP Status ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            // Render to browser UI
+            if (revenueUI) {
+                revenueUI.innerText = `$${data.metrics.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            }
+            if (volumeUI) {
+                volumeUI.innerText = `${data.metrics.totalItemsSold.toLocaleString()} units`;
+            }
+            console.log("✓ Success: Data pulled cleanly from Port 3004.");
+
+        } catch (activeError) {
+            // --- ATTEMPT 2: Failover to Standby Endpoint (Port 3014) ---
+            console.warn("⚠️ Primary Node [3004] unreachable. Initiating instant failover sequence to Backup Node [3014]...", activeError.message);
+            
+            try {
+                const response = await fetch(STANDBY_URL);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP Status ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Render backup data safely onto browser UI
                 if (revenueUI) {
                     revenueUI.innerText = `$${data.metrics.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                 }
                 if (volumeUI) {
                     volumeUI.innerText = `${data.metrics.totalItemsSold.toLocaleString()} units`;
                 }
-            })
-            .catch(error => {
+                console.log("✓ High Availability Achieved: Backup Node [Port 3014] handled the request smoothly with zero system downtime.");
+
+            } catch (standbyError) {
+                // --- SYSTEM CRASH: Both lines are disconnected ---
+                console.error("🚨 Total Service Outage: Both primary and standby engines are completely offline.", standbyError.message);
                 if (errorBanner) {
-                    errorBanner.textContent = `⚠️ System Exception: ${error.message}`;
+                    errorBanner.textContent = `⚠️ System Exception: Data Pipeline Interrupted. Connection to both Active (3004) and Standby (3014) clusters failed.`;
                     errorBanner.style.display = 'block';
                 }
-            });
+            }
+        }
     });
 }

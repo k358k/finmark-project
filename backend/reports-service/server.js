@@ -7,13 +7,12 @@ app.use(cors())
 app.use(express.json())
 app.use('/api/reports', routes)
 
-const ACTIVE_PORT = 3004
-const STANDBY_PORT = 3014
+const PORT = process.env.PORT
+if (!PORT) {
+  console.error('PORT environment variable is required')
+  process.exit(1)
+}
 
-app.listen(ACTIVE_PORT, () => {
-  console.log(`[reports-service] Active instance running on port ${ACTIVE_PORT}`)
-})
-
-app.listen(STANDBY_PORT, () => {
-  console.log(`[reports-service] Standby instance running on port ${STANDBY_PORT}`)
+app.listen(PORT, () => {
+  console.log(`[reports-service] Instance running on port ${PORT}`)
 })

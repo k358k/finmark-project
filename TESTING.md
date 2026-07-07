@@ -82,3 +82,4 @@ Tests:       9 passed, 9 total
 - No database needed - we test against the hardcoded mock data
 - If you change the mock credentials in `auth-service/routes.js`, update the test accordingly
 - If you modify the mock order stream in `reports-service/routes.js`, recalculate the expected totals
+- To run tests without failing on products-service which has no tests, the test:products script uses --passWithNoTests flag

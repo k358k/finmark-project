@@ -14,7 +14,7 @@
     "start:all": "concurrently \"npm run start:auth\" \"npm run start:auth:standby\" \"npm run start:orders\" \"npm run start:orders:standby\" \"npm run start:products\" \"npm run start:products:standby\" \"npm run start:reports\" \"npm run start:reports:standby\"",
     "test:auth": "npm test --prefix auth-service",
     "test:orders": "npm test --prefix orders-service",
-    "test:products": "npm test --prefix products-service",
+    "test:products": "npm test --prefix products-service -- --passWithNoTests",
     "test:reports": "npm test --prefix reports-service",
     "test:all": "npm run test:auth && npm run test:orders && npm run test:products && npm run test:reports"
   },

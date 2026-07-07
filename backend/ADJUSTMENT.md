@@ -20,6 +20,14 @@ backend/
 
 Each service has its own `server.js`, `routes.js`, `package.json`, and `tests/` folder.
 
+## High Availability Fix
+
+**The problem:** before, each `server.js` called `app.listen()` twice in the same process - once for active, once for standby. So if the Node process crashed, both ports died together. Not really "high availability" if one crash takes out both.
+
+**The fix:** each `server.js` now reads `process.env.PORT` and only listens on that one port. We run two separate OS processes per service - one for active, one for standby. They're completely independent. Kill one and the other keeps running.
+
+Think of it like two separate apps running - they don't affect each other at all. A crash in the standby process won't even blink the active one.
+
 ## How to start everything
 
 ```bash
@@ -27,10 +35,11 @@ cd backend
 npm run start:all
 ```
 
-This uses `concurrently` to spin up all 4 services at once. You'll see 8 console lines - one active + one standby per service.
+This uses `concurrently` to spin up all 8 processes at once (2 per service). You'll see 8 console lines - one active + one standby per service, each running as a completely separate process.
 
 ## How to start one service
 
+Start the active instance:
 ```bash
 npm run start:auth
 npm run start:orders
@@ -38,7 +47,15 @@ npm run start:products
 npm run start:reports
 ```
 
-Each starts both active and standby for that service.
+Start a standby instance:
+```bash
+npm run start:auth:standby
+npm run start:orders:standby
+npm run start:products:standby
+npm run start:reports:standby
+```
+
+Each command starts exactly one process on one port. Mix and match as needed.
 
 ## How to run tests
 
@@ -77,4 +94,4 @@ script.js has already been updated. Nothing for teammates to change here.
 | products | 3003 | 3013 |
 | reports | 3004 | 3014 |
 
-Both ports run at the same time. If active goes down, hit the standby port instead.
+Both ports run at the same time, but as separate processes. If active goes down, hit the standby port instead.

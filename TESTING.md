@@ -4,12 +4,20 @@ This document explains what was tested, how to run the tests, and what each test
 
 ## How to Run
 
+Run all tests:
 ```bash
 cd backend
-npm test
+npm run test:all
 ```
 
-This runs all tests using Jest. You should see all 9 tests pass.
+Or run them individually per service:
+```bash
+npm run test:auth
+npm run test:orders
+npm run test:reports
+```
+
+Each command runs Jest inside its respective service folder. You should see all 9 tests pass.
 
 ## What We Tested
 
@@ -24,7 +32,7 @@ We focused on the 3 functional endpoints in our backend:
 - Wrong password → returns 401 with error message
 - Empty/missing fields → returns 401 (backend treats invalid input the same as wrong credentials)
 
-**File:** `tests/auth.test.js`
+**File:** `backend/auth-service/tests/auth.test.js`
 
 ### 2. Orders (`POST /api/orders`)
 
@@ -35,7 +43,7 @@ We focused on the 3 functional endpoints in our backend:
 - Missing any field → returns 400 with validation error
 - Empty body → returns 400
 
-**File:** `tests/orders.test.js`
+**File:** `backend/orders-service/tests/orders.test.js`
 
 ### 3. Reports (`GET /api/reports/summary`)
 
@@ -47,7 +55,7 @@ We focused on the 3 functional endpoints in our backend:
   - Expected totalItemsSold: 68 (sum of 9 valid orders)
 - Response structure has the correct fields
 
-**File:** `tests/reports.test.js`
+**File:** `backend/reports-service/tests/reports.test.js`
 
 ## Test Results (as of July 2026)
 
@@ -72,5 +80,5 @@ Tests:       9 passed, 9 total
 
 - Tests run against the actual route handlers (not the full server, but the same logic)
 - No database needed - we test against the hardcoded mock data
-- If you change the mock credentials in `routes/auth.js`, update the test accordingly
-- If you modify the mock order stream in `routes/reports.js`, recalculate the expected totals
+- If you change the mock credentials in `auth-service/routes.js`, update the test accordingly
+- If you modify the mock order stream in `reports-service/routes.js`, recalculate the expected totals

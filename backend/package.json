@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "description": "FinMark microservices backend",
   "scripts": {
+    "seed": "node seed/seed.js",
     "start:auth": "PORT=3001 node auth-service/server.js",
     "start:auth:standby": "PORT=3011 node auth-service/server.js",
     "start:orders": "PORT=3002 node orders-service/server.js",
@@ -17,6 +18,11 @@
     "test:products": "npm test --prefix products-service -- --passWithNoTests",
     "test:reports": "npm test --prefix reports-service",
     "test:all": "npm run test:auth && npm run test:orders && npm run test:products && npm run test:reports"
+  },
+  "dependencies": {
+    "argon2": "^0.41.1",
+    "dotenv": "^16.4.7",
+    "mongoose": "^8.9.5"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

@@ -1,0 +1,313 @@
+version: "3.8"
+
+services:
+  # ==================== MONGODB ====================
+  finmark-mongo:
+    image: mongo:7
+    container_name: finmark-mongo
+    command: --replSet rs0 --keyFile /etc/mongo/keyfile
+    ports:
+      - "27018:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=finmark
+      - MONGO_INITDB_ROOT_PASSWORD=finmark123
+      - MONGO_INITDB_DATABASE=finmark
+      - ADMIN_EMAIL=admin@finmark.com
+      - ADMIN_PASSWORD=Password123!
+    volumes:
+      - mongo-data:/data/db
+      - ./mongo-init/keyfile:/etc/mongo/keyfile:ro
+      - ./mongo-init/init-replicaset.sh:/docker-entrypoint-initdb.d/init-replicaset.sh:ro
+    networks:
+      - finmark-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "finmark", "-p", "finmark123", "--authenticationDatabase", "admin", "--eval", "rs.status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ==================== MONGO EXPRESS ====================
+  finmark-mongo-express:
+    image: mongo-express:latest
+    container_name: finmark-mongo-express
+    ports:
+      - "8082:8081"
+    environment:
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=finmark
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=finmark123
+      - ME_CONFIG_MONGODB_URL=mongodb://finmark:finmark123@finmark-mongo:27017/?authSource=admin
+      - ME_CONFIG_BASICAUTH_USERNAME=finmark
+      - ME_CONFIG_BASICAUTH_PASSWORD=finmark123
+    depends_on:
+      finmark-mongo:
+        condition: service_healthy
+    networks:
+      - finmark-network
+    restart: unless-stopped
+
+  # ==================== REDIS CACHE ====================
+  finmark-redis:
+    image: redis:7-alpine
+    container_name: finmark-redis
+    expose:
+      - "6379"
+    networks:
+      - finmark-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== API GATEWAY ====================
+  finmark-api-gateway-1:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: finmark-api-gateway-1
+    expose:
+      - "3000"
+    networks:
+      - finmark-network
+    depends_on:
+      - finmark-auth-active
+      - finmark-auth-standby
+      - finmark-orders-active
+      - finmark-orders-standby
+      - finmark-products-active
+      - finmark-products-standby
+      - finmark-reports-active
+      - finmark-reports-standby
+    restart: unless-stopped
+
+  finmark-api-gateway-2:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: finmark-api-gateway-2
+    expose:
+      - "3000"
+    networks:
+      - finmark-network
+    depends_on:
+      - finmark-auth-active
+      - finmark-auth-standby
+      - finmark-orders-active
+      - finmark-orders-standby
+      - finmark-products-active
+      - finmark-products-standby
+      - finmark-reports-active
+      - finmark-reports-standby
+    restart: unless-stopped
+
+  # ==================== NGINX LOAD BALANCER ====================
+  finmark-nginx:
+    image: nginx:alpine
+    container_name: finmark-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - finmark-api-gateway-1
+      - finmark-api-gateway-2
+    networks:
+      - finmark-network
+    restart: unless-stopped
+
+  # ==================== AUTH SERVICE ====================
+  finmark-auth-active:
+    build:
+      context: .
+      dockerfile: auth-service/Dockerfile
+    environment:
+      - PORT=3001
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+    ports:
+      - "3001:3001"
+    networks:
+      - finmark-network
+    depends_on:
+      finmark-mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/auth/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  finmark-auth-standby:
+    build:
+      context: .
+      dockerfile: auth-service/Dockerfile
+    environment:
+      - PORT=3011
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+    ports:
+      - "3011:3011"
+    networks:
+      - finmark-network
+    depends_on:
+      finmark-mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3011/api/auth/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== ORDERS SERVICE ====================
+  finmark-orders-active:
+    build:
+      context: .
+      dockerfile: orders-service/Dockerfile
+    environment:
+      - PORT=3002
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+    ports:
+      - "3002:3002"
+    networks:
+      - finmark-network
+    depends_on:
+      finmark-mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/api/orders/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  finmark-orders-standby:
+    build:
+      context: .
+      dockerfile: orders-service/Dockerfile
+    environment:
+      - PORT=3012
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+    ports:
+      - "3012:3012"
+    networks:
+      - finmark-network
+    depends_on:
+      finmark-mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3012/api/orders/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== PRODUCTS SERVICE ====================
+  finmark-products-active:
+    build:
+      context: .
+      dockerfile: products-service/Dockerfile
+    environment:
+      - PORT=3003
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+      - REDIS_URL=redis://finmark-redis:6379
+    ports:
+      - "3003:3003"
+    networks:
+      - finmark-network
+    depends_on:
+      finmark-mongo:
+        condition: service_healthy
+      finmark-redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/api/products/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  finmark-products-standby:
+    build:
+      context: .
+      dockerfile: products-service/Dockerfile
+    environment:
+      - PORT=3013
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+      - REDIS_URL=redis://finmark-redis:6379
+    ports:
+      - "3013:3013"
+    networks:
+      - finmark-network
+    depends_on:
+      finmark-mongo:
+        condition: service_healthy
+      finmark-redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3013/api/products/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== REPORTS SERVICE ====================
+  finmark-reports-active:
+    build:
+      context: .
+      dockerfile: reports-service/Dockerfile
+    environment:
+      - PORT=3004
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+    ports:
+      - "3004:3004"
+    networks:
+      - finmark-network
+    depends_on:
+      finmark-mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3004/api/reports/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  finmark-reports-standby:
+    build:
+      context: .
+      dockerfile: reports-service/Dockerfile
+    environment:
+      - PORT=3014
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+    ports:
+      - "3014:3014"
+    networks:
+      - finmark-network
+    depends_on:
+      finmark-mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3014/api/reports/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mongo-data:
+
+networks:
+  finmark-network:
+    driver: bridge

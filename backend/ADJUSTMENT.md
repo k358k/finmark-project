@@ -1,97 +1,280 @@
-# ADJUSTMENT.md - Microservices Restructuring
+# ADJUSTMENT.md - Microservices Backend
 
-## What happened
+## What changed and why
 
-We broke the monolith into 4 separate services. Each one runs on its own port with a standby instance. If the active one dies, the frontend can still hit the standby.
+Started as one big server.js handling everything. Broke it into 4 microservices - auth, orders, products, reports - each with its own routes, models, and database connection. Then we put nginx in front as a load balancer.
 
-Old setup: one `server.js` on port 3001 handling everything.
-New setup: 4 independent Node servers, each with 2 ports running at the same time.
+The original setup had separate nginx instances per service, each with an active and standby container. You had to manage ports, configure upstreams, and if something broke you had to figure out which nginx to look at. It worked but it was messy.
 
-## New folder structure
+Switched to Docker Swarm. Now there's one Nginx on port 80, an API Gateway that routes to the right service, and Swarm handles all the replica management. If a container dies, Swarm replaces it automatically. No manual failover, no separate load balancer configs per service. Way cleaner.
+
+## Current folder structure
 
 ```
 backend/
-├── auth-service/          # port 3001 (active) / 3011 (standby)
-├── orders-service/        # port 3002 (active) / 3012 (standby)
-├── products-service/      # port 3003 (active) / 3013 (standby)
-├── reports-service/       # port 3004 (active) / 3014 (standby)
-└── package.json           # root scripts live here
+├── api-gateway/            # central router - Express + http-proxy-middleware
+│   ├── server.js
+│   ├── package.json
+│   └── Dockerfile
+├── auth-service/           # login, user management
+│   ├── models/User.js
+│   ├── routes.js
+│   ├── server.js
+│   └── Dockerfile
+├── orders-service/         # order placement
+│   ├── models/Order.js
+│   ├── routes.js
+│   ├── server.js
+│   └── Dockerfile
+├── products-service/       # product catalog + Redis cache
+│   ├── models/Product.js
+│   ├── routes.js
+│   ├── server.js
+│   └── Dockerfile
+├── reports-service/        # analytics and reports
+│   ├── models/Report.js
+│   ├── routes.js
+│   ├── server.js
+│   └── Dockerfile
+├── shared/
+│   └── db.js               # shared MongoDB connection helper
+├── seed/
+│   └── seed.js             # database seeder (runs on host machine)
+├── nginx/
+│   ├── nginx.conf          # single centralized load balancer config
+│   └── Dockerfile
+├── mongo-init/             # replica set keyfile + init scripts (compose only)
+├── docker-stack.yml        # Swarm deployment
+├── docker-compose.yml      # local dev alternative
+├── package.json
+└── .env                    # admin credentials, MongoDB URI
 ```
 
-Each service has its own `server.js`, `routes.js`, `package.json`, and `tests/` folder.
+## MongoDB Replica Set
 
-## High Availability Fix
+MongoDB runs as a single-node replica set called `rs0`. We needed this because Mongoose connections in the services use replica set mode. Without it, writes would fail or you'd get warnings.
 
-**The problem:** before, each `server.js` called `app.listen()` twice in the same process - once for active, once for standby. So if the Node process crashed, both ports died together. Not really "high availability" if one crash takes out both.
+The replica set is initialized automatically when the container first starts via `mongo-init/init-replicaset.sh`. It waits for Mongo to be ready, then runs `rs.initiate()` to set up the single member.
 
-**The fix:** each `server.js` now reads `process.env.PORT` and only listens on that one port. We run two separate OS processes per service - one for active, one for standby. They're completely independent. Kill one and the other keeps running.
+To verify it's working:
 
-Think of it like two separate apps running - they don't affect each other at all. A crash in the standby process won't even blink the active one.
+```bash
+docker exec -it $(docker ps -q -f name=finmark-mongo) mongosh --eval "rs.status()"
+```
 
-## How to start everything
+You should see `ok: 1` and the state should show `PRIMARY` for the single member. If the replica set was never initialized, you'll get an error saying "not initialized yet" and you need to run the init script manually.
+
+MongoDB uses port 27018 because port 27017 is taken by another project on the machine. Inside Docker, the services connect to port 27017 on the container. The 27018 mapping is just for accessing Mongo from the host machine.
+
+## Redis Cache
+
+Redis is only on the products-service. It uses a cache-aside pattern - first request hits MongoDB, stores the result in Redis with a 60 second TTL. Subsequent requests within that window come from cache.
+
+If Redis goes down, the products-service still works. It falls back to MongoDB and logs `[Redis] Cache unavailable - falling back to MongoDB`. Same if caching fails - it just skips the cache and serves from the database.
+
+Check the logs to see cache behavior:
+
+```bash
+docker service logs finmark_finmark-products
+```
+
+You'll see `[Redis] Cache hit` or `[Redis] Cache miss - fetching from MongoDB` in the output. After the 60 second TTL expires, the next request will be a cache miss again.
+
+## How to start with Docker Swarm
+
+First time only - initialize the swarm:
 
 ```bash
 cd backend
-npm run start:all
+docker swarm init
 ```
 
-This uses `concurrently` to spin up all 8 processes at once (2 per service). You'll see 8 console lines - one active + one standby per service, each running as a completely separate process.
+Build all images:
 
-## How to start one service
-
-Start the active instance:
 ```bash
-npm run start:auth
-npm run start:orders
-npm run start:products
-npm run start:reports
+docker build -t finmark-api-gateway:latest -f api-gateway/Dockerfile .
+docker build -t finmark-auth:latest -f auth-service/Dockerfile .
+docker build -t finmark-orders:latest -f orders-service/Dockerfile .
+docker build -t finmark-products:latest -f products-service/Dockerfile .
+docker build -t finmark-reports:latest -f reports-service/Dockerfile .
+docker build -t finmark-nginx:latest -f nginx/Dockerfile .
 ```
 
-Start a standby instance:
+Deploy the stack:
+
 ```bash
-npm run start:auth:standby
-npm run start:orders:standby
-npm run start:products:standby
-npm run start:reports:standby
+docker stack deploy -c docker-stack.yml finmark
 ```
 
-Each command starts exactly one process on one port. Mix and match as needed.
+After deploying, here's what's running:
+
+| Service | Replicas | Purpose | Internal Port |
+|---------|----------|---------|---------------|
+| finmark-nginx | 1 | Entry point - routes all traffic on port 80 | 80 |
+| finmark-api-gateway | 2 | Routes requests to the right microservice | 3000 |
+| finmark-auth | 2 | Login, user management | 3001 |
+| finmark-orders | 2 | Order placement | 3002 |
+| finmark-products | 2 | Product catalog + Redis cache | 3003 |
+| finmark-reports | 2 | Analytics and reports | 3004 |
+| finmark-mongo | 1 | Database | 27017 (27018 from host) |
+| finmark-redis | 1 | Cache for products-service only | 6379 |
+| finmark-mongo-express | 1 | Web UI for browsing MongoDB | 8081 (8082 from host) |
+
+The "internal port" is what services use inside the Docker network. You don't access these directly - everything goes through port 80.
+
+Check everything is running:
+
+```bash
+docker stack services finmark
+```
+
+All services should show 2/2 or 1/1 in the REPLICAS column.
+
+Stop everything:
+
+```bash
+docker stack rm finmark
+```
+
+## How to start with Docker Compose
+
+For local dev if you don't want Swarm. Uses active/standby container names, separate ports per service.
+
+```bash
+cd backend
+docker compose up --build
+```
+
+This starts 14 containers. The Swarm setup is what we actually use, but the Compose file is kept around for reference.
+
+## How to seed the database
+
+Run from the host machine, not inside Docker. Make sure MongoDB is running first.
+
+```bash
+cd backend
+npm run seed
+```
+
+Reads `MONGO_URI`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` from `.env`. Uses argon2 for password hashing, not bcrypt. Clears all existing data before inserting, so safe to run multiple times.
+
+Default `.env` values:
+
+```
+MONGO_URI=mongodb://localhost:27018/finmark?directConnection=true
+ADMIN_EMAIL=admin@finmark.com
+ADMIN_PASSWORD=Password123!
+```
+
+If you change the admin password in `.env`, the seed script regenerates the hash automatically.
+
+## Validations
+
+Each service validates input before hitting the database. Here's what each one checks.
+
+**auth-service** - POST /api/auth/login
+- Email and password are both required. Missing either returns 400 with "Email and password are required".
+- Wrong email or wrong password both return 401 with "Invalid email or password". No separate message for each - keeps it secure.
+
+**orders-service** - POST /api/orders
+- customerName, quantity, and orderValue are all required. Missing any returns 400 with "All fields are required".
+- customerName is validated with a regex: must be at least 2 characters, only letters, numbers, spaces, hyphens, or apostrophes. Failing this returns 400 with a message explaining the allowed characters.
+
+**reports-service** - GET /api/reports/summary
+- No input validation needed since it's a GET with no parameters.
+- Records with null or undefined totalRevenue or totalItemsSold are skipped. You'll see `[System Notice] Corrupted record skipped safely` in the logs. Doesn't crash, doesn't return an error - just skips the bad record and continues summing the valid ones.
+
+**products-service** - GET /api/products
+- If Redis is down, it falls back to MongoDB automatically. You'll see `[Redis] Cache unavailable - falling back to MongoDB` in the logs. No crash, no error response to the client.
+- If caching fails (Redis rejects the set), it still serves the data from MongoDB. Logs show `[Redis] Failed to cache - continuing without cache`.
+
+**All services** - Every service exposes GET /api/<service-name>/health returning `{ "status": "ok" }`. Used by Docker health checks and the API Gateway to know if a service is alive.
+
+## Port reference
+
+Everything goes through port 80. The frontend only hits one port. The API Gateway figures out which service to route to.
+
+| What             | Port  | Notes                                           |
+|------------------|-------|-------------------------------------------------|
+| API (all services) | 80  | Nginx → API Gateway → service                   |
+| Mongo Express    | 8082  | Web dashboard for browsing MongoDB              |
+| MongoDB          | 27018 | From host machine. Inside Docker it's 27017     |
+
+The old setup had ports 3001-3004 for active instances, 3011-3014 for standby, and 4000-4007 for load balancers. None of that exists anymore. Port 80, that's it.
+
+## Mongo Express
+
+Web UI for viewing and editing MongoDB data directly in the browser.
+
+- URL: http://localhost:8082
+- No login needed in the Swarm setup
+- Browse all collections: users, products, orders, reports
+
+If using the Compose setup, credentials are `finmark` / `finmark123`.
+
+## Testing failover
+
+This is just regular dev workflow, not a presentation trick. Swarm manages replicas automatically so you can test that it actually works.
+
+Check what's running:
+
+```bash
+docker stack services finmark
+```
+
+Pick a service and scale it down:
+
+```bash
+docker service scale finmark_finmark-auth=1
+```
+
+Test that it still works:
+
+```bash
+curl http://localhost/api/auth/health
+```
+
+It should still return `{"status":"ok"}`. The surviving replica handles the traffic.
+
+Scale it back up:
+
+```bash
+docker service scale finmark_finmark-auth=2
+```
+
+Check that Swarm created a new task:
+
+```bash
+docker service ps finmark_finmark-auth
+```
+
+You'll see the old task as "Shutdown" or "Complete" and a new one as "Running". Swarm handled the whole thing. No restart needed, no config change, no manual intervention.
+
+Works the same way with any service - just replace `finmark-auth` with `finmark-orders`, `finmark-products`, or `finmark-reports`.
+
+## Notes for the team
+
+For backend - each service has its own folder with `server.js`, `routes.js`, `models/`, and a `package.json`. If you add a dependency, run `npm install` inside that service folder. The `shared/db.js` handles the MongoDB connection so don't duplicate it. Every service exposes `GET /api/<service>/health` for health checks.
+
+For frontend - all API calls go to port 80. Same URLs as before, just drop the port number. So `http://localhost:4000/api/auth/login` becomes `http://localhost/api/auth/login`. The API Gateway handles routing to the right service. Check `api-gateway/server.js` to see how the routing works.
+
+For documentation - `docker-stack.yml` is the production config. `docker-compose.yml` is kept for local dev reference. The architecture flow is: User → Nginx (port 80) → API Gateway (port 3000, internal) → microservice. Redis is only on products-service for caching.
 
 ## How to run tests
 
 Run all tests:
+
 ```bash
 npm run test:all
 ```
 
-Run one service's tests:
+Run individual services:
+
 ```bash
 npm run test:auth
 npm run test:orders
 npm run test:reports
+npm run test:products
 ```
 
-Note: products-service doesn't have tests yet. It's just a placeholder endpoint.
-
-## Frontend changes needed
-
-The frontend points to port 3001 for everything. Two lines needed updating in `frontend/src/script.js`:
-
-| Line | What it is | URL | Status |
-|------|-----------|-----|--------|
-| 42 | auth login | `http://localhost:3001/api/auth/login` | Done |
-| 99 | orders | `http://localhost:3002/api/orders` | Done |
-| 148 | reports summary | `http://localhost:3004/api/reports/summary` | Done |
-
-script.js has already been updated. Nothing for teammates to change here.
-
-## Port reference
-
-| Service | Active | Standby |
-|---------|--------|---------|
-| auth | 3001 | 3011 |
-| orders | 3002 | 3012 |
-| products | 3003 | 3013 |
-| reports | 3004 | 3014 |
-
-Both ports run at the same time, but as separate processes. If active goes down, hit the standby port instead.
+Tests use jest and supertest. They test routes directly, don't need MongoDB or Docker running. Products doesn't have tests yet.

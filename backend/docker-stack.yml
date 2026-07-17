@@ -1,0 +1,211 @@
+version: "3.8"
+
+services:
+  # ==================== MONGODB ====================
+  finmark-mongo:
+    image: mongo:7
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - finmark-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== MONGO EXPRESS ====================
+  finmark-mongo-express:
+    image: mongo-express:latest
+    ports:
+      - "8082:8081"
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://finmark-mongo:27017
+    networks:
+      - finmark-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+
+  # ==================== REDIS CACHE ====================
+  finmark-redis:
+    image: redis:7-alpine
+    networks:
+      - finmark-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== API GATEWAY ====================
+  finmark-api-gateway:
+    image: finmark-api-gateway:latest
+    expose:
+      - "3000"
+    networks:
+      - finmark-network
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== NGINX LOAD BALANCER ====================
+  finmark-nginx:
+    image: finmark-nginx:latest
+    ports:
+      - "80:80"
+    networks:
+      - finmark-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/ || exit 0"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== AUTH SERVICE ====================
+  finmark-auth:
+    image: finmark-auth:latest
+    environment:
+      - PORT=3001
+      - MONGO_URI=mongodb://finmark-mongo:27017/finmark
+    networks:
+      - finmark-network
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/auth/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== ORDERS SERVICE ====================
+  finmark-orders:
+    image: finmark-orders:latest
+    environment:
+      - PORT=3002
+      - MONGO_URI=mongodb://finmark-mongo:27017/finmark
+    networks:
+      - finmark-network
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/api/orders/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== PRODUCTS SERVICE ====================
+  finmark-products:
+    image: finmark-products:latest
+    environment:
+      - PORT=3003
+      - MONGO_URI=mongodb://finmark-mongo:27017/finmark
+      - REDIS_URL=redis://finmark-redis:6379
+    networks:
+      - finmark-network
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/api/products/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==================== REPORTS SERVICE ====================
+  finmark-reports:
+    image: finmark-reports:latest
+    environment:
+      - PORT=3004
+      - MONGO_URI=mongodb://finmark-mongo:27017/finmark
+    networks:
+      - finmark-network
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3004/api/reports/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mongo-data:
+
+networks:
+  finmark-network:
+    driver: overlay
+    attachable: true

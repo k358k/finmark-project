@@ -5,7 +5,15 @@ services:
   finmark-mongo:
     image: mongo:7
     container_name: finmark-mongo
-    command: --replSet rs0 --keyFile /etc/mongo/keyfile
+  
+  # Command part changed
+    command: >
+      bash -c "
+      cp /etc/mongo/keyfile /tmp/keyfile &&
+      chmod 400 /tmp/keyfile &&
+      chown 999:999 /tmp/keyfile &&
+      exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /tmp/keyfile --bind_ip_all
+      "
     ports:
       - "27018:27017"
     environment:
@@ -22,11 +30,12 @@ services:
       - finmark-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mongosh", "-u", "finmark", "-p", "finmark123", "--authenticationDatabase", "admin", "--eval", "rs.status()"]
-      interval: 30s
+      test: |
+        mongosh -u finmark -p finmark123 --authenticationDatabase admin --eval "db.getSiblingDB('admin').adminCommand('ping')" --quiet
+      interval: 5s
       timeout: 5s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 60s
 
   # ==================== MONGO EXPRESS ====================
   finmark-mongo-express:
@@ -126,7 +135,10 @@ services:
       dockerfile: auth-service/Dockerfile
     environment:
       - PORT=3001
-      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0&directConnection=true
+        # Note: &directConnection=true forces the driver to connect directly to finmark-mongo.
+        # Without this, MongoDB's replica set mode (rs0) tries to redirect the app 
+        # to '127.0.0.1' inside the container, causing a 30-second timeout error.   
     ports:
       - "3001:3001"
     networks:
@@ -148,7 +160,7 @@ services:
       dockerfile: auth-service/Dockerfile
     environment:
       - PORT=3011
-      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0&directConnection=true
     ports:
       - "3011:3011"
     networks:
@@ -171,7 +183,7 @@ services:
       dockerfile: orders-service/Dockerfile
     environment:
       - PORT=3002
-      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0&directConnection=true
     ports:
       - "3002:3002"
     networks:
@@ -193,7 +205,7 @@ services:
       dockerfile: orders-service/Dockerfile
     environment:
       - PORT=3012
-      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0&directConnection=true
     ports:
       - "3012:3012"
     networks:
@@ -216,7 +228,7 @@ services:
       dockerfile: products-service/Dockerfile
     environment:
       - PORT=3003
-      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0&directConnection=true
       - REDIS_URL=redis://finmark-redis:6379
     ports:
       - "3003:3003"
@@ -241,7 +253,7 @@ services:
       dockerfile: products-service/Dockerfile
     environment:
       - PORT=3013
-      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0&directConnection=true
       - REDIS_URL=redis://finmark-redis:6379
     ports:
       - "3013:3013"
@@ -267,7 +279,7 @@ services:
       dockerfile: reports-service/Dockerfile
     environment:
       - PORT=3004
-      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0&directConnection=true
     ports:
       - "3004:3004"
     networks:
@@ -289,7 +301,7 @@ services:
       dockerfile: reports-service/Dockerfile
     environment:
       - PORT=3014
-      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0
+      - MONGO_URI=mongodb://finmark:finmark123@finmark-mongo:27017/finmark?authSource=admin&replicaSet=rs0&directConnection=true
     ports:
       - "3014:3014"
     networks:

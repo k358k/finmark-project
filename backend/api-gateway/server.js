@@ -5,10 +5,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const services = [
-  { path: '/api/auth', target: 'http://finmark-auth:3001', standby: 'http://finmark-auth:3001' },
-  { path: '/api/orders', target: 'http://finmark-orders:3002', standby: 'http://finmark-orders:3002' },
-  { path: '/api/products', target: 'http://finmark-products:3003', standby: 'http://finmark-products:3003' },
-  { path: '/api/reports', target: 'http://finmark-reports:3004', standby: 'http://finmark-reports:3004' },
+  { path: '/api/auth', target: 'http://finmark-auth-active:3001', standby: 'http://finmark-auth-standby:3011' },
+  { path: '/api/orders', target: 'http://finmark-orders-active:3002', standby: 'http://finmark-orders-standby:3012' },
+  { path: '/api/products', target: 'http://finmark-products-active:3003', standby: 'http://finmark-products-standby:3013' },
+  { path: '/api/reports', target: 'http://finmark-reports-active:3004', standby: 'http://finmark-reports-standby:3014' },
 ];
 
 let counter = 0;
@@ -18,7 +18,14 @@ services.forEach((service) => {
     const targets = [service.target, service.standby];
     const target = targets[counter % 2];
     counter++;
-    createProxyMiddleware({ target, changeOrigin: true, pathRewrite: { '^': service.path } })(req, res, next);
+
+    // Restore the full path so auth-service receives /api/auth/login
+    req.url = service.path + req.url;
+
+    createProxyMiddleware({
+      target,
+      changeOrigin: true,
+    })(req, res, next);
   });
 });
 

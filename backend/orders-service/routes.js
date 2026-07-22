@@ -17,7 +17,7 @@ router.post('/', async (req, res) => {
     }
 
     if (!/^[a-zA-Z0-9\s'\-]{2,}$/.test(customerName)) {
-      return res.status(400).json({ message: 'Customer name must be at least 2 characters and contain only letters, numbers, spaces, hyphens, or apostrophes' })
+      return res.status(400).json({ message: 'Customer name is invalid' })
     }
 
     const orderId = 'FM-ORD-' + Date.now()

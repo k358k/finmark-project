@@ -8,6 +8,18 @@ The original setup had separate nginx instances per service, each with an active
 
 Switched to Docker Swarm. Now there's one Nginx on port 80, an API Gateway that routes to the right service, and Swarm handles all the replica management. If a container dies, Swarm replaces it automatically. No manual failover, no separate load balancer configs per service. Way cleaner.
 
+## Important: Docker Swarm Only
+
+This project uses Docker Swarm (`docker-stack.yml`) for deployment, NOT Docker Compose (`docker-compose.yml`). The Compose file is kept for reference only.
+
+- **Deploy:** `docker stack deploy -c docker-stack.yml finmark`
+- **Remove:** `docker stack rm finmark`
+- **Check:** `docker stack services finmark`
+- **Mongo Express:** `http://localhost:8082` (login: `finmark` / `finmark123`)
+- **API:** `http://localhost` (port 80 via Nginx)
+
+Do NOT use `docker-compose up` - use the Swarm commands above.
+
 ## Current folder structure
 
 ```
@@ -80,6 +92,29 @@ docker service logs finmark_finmark-products
 
 You'll see `[Redis] Cache hit` or `[Redis] Cache miss - fetching from MongoDB` in the output. After the 60 second TTL expires, the next request will be a cache miss again.
 
+## Rate Limiting
+
+Rate limiting is configured in Nginx to prevent system flooding during peak hours. Each IP address is limited to 10 requests per second with a burst allowance of 20 requests.
+
+**Configuration (nginx/nginx.conf):**
+- `limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s` - Defines the rate limit zone
+- `limit_req zone=api burst=20 nodelay` - Applies the limit to all incoming requests
+
+**How it works:**
+- Normal traffic: Handled immediately
+- Burst traffic (up to 20 requests): Handled without delay
+- Exceeding rate: Returns 503 "Service Temporarily Unavailable"
+
+**Why this matters:**
+Without rate limiting, a surge in traffic (like during peak hours) could overwhelm the system and cause key pages to fail to load. This solves the issue identified in our MS1 audit where the single server ran out of resources under concurrent requests.
+
+**To test rate limiting:**
+```bash
+# Send rapid requests to trigger rate limit
+for i in {1..30}; do curl -s http://localhost/health; done
+# After 20+ requests, you'll see 503 errors
+```
+
 ## How to start with Docker Swarm
 
 First time only - initialize the swarm:
@@ -111,7 +146,7 @@ After deploying, here's what's running:
 | Service | Replicas | Purpose | Internal Port |
 |---------|----------|---------|---------------|
 | finmark-nginx | 1 | Entry point - routes all traffic on port 80 | 80 |
-| finmark-api-gateway | 2 | Routes requests to the right microservice | 3000 |
+| finmark-api-gateway | 1 | Routes requests to the right microservice | 3000 |
 | finmark-auth | 2 | Login, user management | 3001 |
 | finmark-orders | 2 | Order placement | 3002 |
 | finmark-products | 2 | Product catalog + Redis cache | 3003 |
@@ -207,10 +242,47 @@ The old setup had ports 3001-3004 for active instances, 3011-3014 for standby, a
 Web UI for viewing and editing MongoDB data directly in the browser.
 
 - URL: http://localhost:8082
-- No login needed in the Swarm setup
+- Credentials: `finmark` / `finmark123`
 - Browse all collections: users, products, orders, reports
 
-If using the Compose setup, credentials are `finmark` / `finmark123`.
+## Frontend
+
+The frontend is a separate client that calls the backend API. It runs on a different port than the backend.
+
+### How to Start Frontend
+
+```bash
+cd frontend/src
+npx serve .
+```
+
+The frontend will start at `http://localhost:3000`.
+
+### How It Works
+
+| Component | URL | Purpose |
+|-----------|-----|---------|
+| Frontend | http://localhost:3000 | Login page, dashboard, orders, reports |
+| Backend API | http://localhost (port 80) | API Gateway → microservices |
+| Mongo Express | http://localhost:8082 | Database browser |
+
+The frontend calls `http://localhost/api/...` for all API requests. Nginx routes these to the API Gateway, which routes to the correct microservice.
+
+### Pages
+
+| Page | URL | Purpose |
+|------|-----|---------|
+| Login | http://localhost:3000 | Sign in page |
+| Dashboard | http://localhost:3000/dashboard.html | Main dashboard |
+| Orders | http://localhost:3000/products.html | Product catalog + place order |
+| Reports | http://localhost:3000/reports.html | Analytics and reports |
+
+### Default Credentials
+
+| Service | Username | Password |
+|---------|----------|----------|
+| FinMark App | admin@finmark.com | Password123! |
+| Mongo Express | finmark | finmark123 |
 
 ## Testing failover
 
